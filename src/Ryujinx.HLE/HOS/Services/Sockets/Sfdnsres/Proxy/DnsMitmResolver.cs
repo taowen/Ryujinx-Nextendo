@@ -216,8 +216,16 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres.Proxy
 
             return NextendoServerOverride.ServerAddress ?? configuree;
         }
-        private static bool TryMatchBuiltin(string host, out IPAddress address)
+        private static bool TryMatchBuiltin(string host, ulong programId, out IPAddress address)
         {
+            if (NextendoGgstRedirect.IsServiceHost(host, programId))
+            {
+                IPAddress configuredAddress = Substituer(host, ResolveConfiguredIp("NEXTENDO_SERVER_IP"));
+                address = NextendoGgstRedirect.ResolveAddress(configuredAddress);
+
+                return true;
+            }
+
             foreach ((string pattern, IPAddress addr) in _builtinRedirects)
             {
                 if (FileSystemName.MatchesSimpleExpression(pattern, host))
@@ -329,9 +337,9 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres.Proxy
         // [Nextendo] True if this host is one we deliberately redirect (built-in rule or
         // hosts file, wildcards included). Used so an explicit redirect wins over the anti-ban DNS
         // blacklist: a host we point at our own server must not be blocked.
-        public bool IsHostMitmd(string host)
+        public bool IsHostMitmd(string host, ulong programId = 0)
         {
-            if (TryMatchBuiltin(host, out _))
+            if (TryMatchBuiltin(host, programId, out _))
             {
                 return true;
             }
@@ -347,7 +355,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres.Proxy
             return false;
         }
 
-        public IPHostEntry ResolveAddress(string host)
+        public IPHostEntry ResolveAddress(string host, ulong programId = 0)
         {
             // [Nextendo] Retenir la toute premiere resolution npln le temps que la rafale JIT du demarrage
             // retombe (voir MaybeDelayNplnInit) : la connexion gRPC se bloque si elle demarre en pleine rafale.
@@ -398,7 +406,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres.Proxy
 
             // [Nextendo] Built-in ordered rules take precedence (deterministic; most
             // specific first) so the wildcard can never swallow the nncs2 NAT-check host.
-            if (TryMatchBuiltin(host, out IPAddress builtinAddress))
+            if (TryMatchBuiltin(host, programId, out IPAddress builtinAddress))
             {
                 // [Nextendo beta] Debug-level so the redirect targets don't appear in normal logs.
                 Logger.Debug?.PrintMsg(LogClass.ServiceBsd, $"Redirecting '{host}' to: {builtinAddress} (built-in)");

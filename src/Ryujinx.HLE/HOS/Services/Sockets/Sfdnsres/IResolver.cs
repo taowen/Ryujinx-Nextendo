@@ -412,8 +412,9 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres
                 }
 
                 string targetHost = host;
+                ulong programId = context.Device.Processes.ActiveApplication?.ProgramId ?? 0;
 
-                if (DnsBlacklist.IsHostBlocked(host) && !DnsMitmResolver.Instance.IsHostMitmd(host))
+                if (DnsBlacklist.IsHostBlocked(host) && !DnsMitmResolver.Instance.IsHostMitmd(host, programId))
                 {
                     Logger.Info?.Print(LogClass.ServiceSfdnsres, $"DNS Blocked: {host}");
 
@@ -426,7 +427,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres
 
                     try
                     {
-                        hostEntry = DnsMitmResolver.Instance.ResolveAddress(targetHost);
+                        hostEntry = DnsMitmResolver.Instance.ResolveAddress(targetHost, programId);
                     }
                     catch (SocketException exception)
                     {
@@ -638,8 +639,9 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres
                 }
 
                 string targetHost = host;
+                ulong programId = context.Device.Processes.ActiveApplication?.ProgramId ?? 0;
 
-                if (DnsBlacklist.IsHostBlocked(host) && !DnsMitmResolver.Instance.IsHostMitmd(host))
+                if (DnsBlacklist.IsHostBlocked(host) && !DnsMitmResolver.Instance.IsHostMitmd(host, programId))
                 {
                     Logger.Info?.Print(LogClass.ServiceSfdnsres, $"DNS Blocked: {host}");
 
@@ -652,7 +654,7 @@ namespace Ryujinx.HLE.HOS.Services.Sockets.Sfdnsres
 
                     try
                     {
-                        hostEntry = DnsMitmResolver.Instance.ResolveAddress(targetHost);
+                        hostEntry = DnsMitmResolver.Instance.ResolveAddress(targetHost, programId);
                     }
                     catch (SocketException exception)
                     {
