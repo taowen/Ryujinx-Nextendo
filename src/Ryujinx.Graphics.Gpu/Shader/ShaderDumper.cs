@@ -1,4 +1,8 @@
 using System.IO;
+using System;
+using System.Security.Cryptography;
+using System.Text.Json;
+using Ryujinx.Graphics.Shader;
 
 namespace Ryujinx.Graphics.Gpu.Shader
 {
@@ -70,6 +74,87 @@ namespace Ryujinx.Graphics.Gpu.Shader
             }
 
             return new ShaderDumpPaths(fullPath, codePath);
+        }
+
+        // Preserve the emitted variant beside its exact guest bytes. Guest code
+        // alone does not identify specialization or descriptor/input state.
+        public static void SaveTranslation(ShaderDumpPaths paths, ShaderProgram program,
+            byte[] cb1Data, string pairedVertexPath = null, GpuChannelComputeState? computeState = null)
+        {
+            if (!paths.HasPath) return;
+            byte[] emitted = program.BinaryCode;
+            string emittedPath = paths.FullPath + (emitted != null ? ".spv" : ".glsl");
+            if (emitted != null) File.WriteAllBytes(emittedPath, emitted);
+            else File.WriteAllText(emittedPath, program.Code ?? "");
+            File.WriteAllBytes(paths.FullPath + ".cb1.bin", cb1Data);
+            using FileStream file = File.Create(paths.FullPath + ".json");
+            using Utf8JsonWriter json = new(file, new JsonWriterOptions { Indented = true });
+            json.WriteStartObject();
+            json.WriteString("stage", program.Info.Stage.ToString());
+            json.WriteString("language", program.Language.ToString());
+            json.WriteString("guestSha256", Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(paths.FullPath))));
+            json.WriteString("emittedFile", Path.GetFileName(emittedPath));
+            json.WriteString("emittedSha256", Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(emittedPath))));
+            json.WriteString("pairedVertexFile", pairedVertexPath == null ? null : Path.GetFileName(pairedVertexPath));
+            json.WriteNumber("cb1Bytes", cb1Data.Length);
+            // Preserve the exact guest-resource mapping behind each emitted
+            // Vulkan binding so an offline replay never guesses slot order.
+            json.WriteStartArray("constantBuffers");
+            foreach (BufferDescriptor buffer in program.Info.CBuffers)
+            {
+                json.WriteStartObject();
+                json.WriteNumber("set", buffer.Set);
+                json.WriteNumber("binding", buffer.Binding);
+                json.WriteNumber("slot", buffer.Slot);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
+            json.WriteStartArray("storageBuffers");
+            foreach (BufferDescriptor buffer in program.Info.SBuffers)
+            {
+                json.WriteStartObject();
+                json.WriteNumber("set", buffer.Set);
+                json.WriteNumber("binding", buffer.Binding);
+                json.WriteNumber("slot", buffer.Slot);
+                json.WriteNumber("pointerCbufSlot", buffer.SbCbSlot);
+                json.WriteNumber("pointerCbufOffset", buffer.SbCbOffset);
+                json.WriteNumber("pointerCbufByteOffset", buffer.SbCbOffset * 4);
+                json.WriteString("flags", buffer.Flags.ToString());
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
+            json.WriteStartArray("textures");
+            foreach (TextureDescriptor texture in program.Info.Textures)
+            {
+                json.WriteStartObject();
+                json.WriteNumber("set", texture.Set);
+                json.WriteNumber("binding", texture.Binding);
+                json.WriteNumber("cbufSlot", texture.CbufSlot);
+                json.WriteNumber("handleIndex", texture.HandleIndex);
+                json.WriteNumber("arrayLength", texture.ArrayLength);
+                json.WriteBoolean("separate", texture.Separate);
+                json.WriteString("type", texture.Type.ToString());
+                json.WriteString("format", texture.Format.ToString());
+                json.WriteString("flags", texture.Flags.ToString());
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
+            if (computeState is GpuChannelComputeState compute)
+            {
+                json.WriteStartObject("computeState");
+                json.WriteStartArray("localSize");
+                json.WriteNumberValue(compute.LocalSizeX);
+                json.WriteNumberValue(compute.LocalSizeY);
+                json.WriteNumberValue(compute.LocalSizeZ);
+                json.WriteEndArray();
+                json.WriteNumber("localMemoryBytes", compute.LocalMemorySize);
+                json.WriteNumber("sharedMemoryBytes", compute.SharedMemorySize);
+                json.WriteBoolean("hasUnalignedStorageBuffer", compute.HasUnalignedStorageBuffer);
+                json.WriteString("source", "runtime QMD compute state used by GpuAccessor");
+                json.WriteEndObject();
+            }
+            json.WriteString("scope", "translation capture; does not include complete draw resources or pipeline state");
+            json.WriteEndObject();
         }
 
         /// <summary>

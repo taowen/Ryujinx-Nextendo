@@ -240,7 +240,7 @@ namespace Ryujinx.Graphics.Gpu.Shader
             gpuAccessor.InitializeReservedCounts(tfEnabled: false, vertexAsCompute: false);
 
             TranslatorContext translatorContext = DecodeComputeShader(gpuAccessor, _context.Capabilities.Api, gpuVa);
-            TranslatedShader translatedShader = TranslateShader(_dumper, channel, translatorContext, cachedGuestCode, asCompute: false);
+            TranslatedShader translatedShader = TranslateShader(_dumper, channel, translatorContext, cachedGuestCode, asCompute: false, computeState: computeState);
 
             ShaderSource[] shaderSourcesArray = new ShaderSource[] { CreateShaderSource(translatedShader.Program) };
             ShaderInfo info = ShaderInfoBuilder.BuildForCompute(_context, translatedShader.Program.Info);
@@ -771,9 +771,12 @@ namespace Ryujinx.Graphics.Gpu.Shader
             {
                 pathsA = dumper.Dump(codeA, compute: false);
                 pathsB = dumper.Dump(codeB, compute: false);
+                SaveGuestWindow(memoryManager, vertexA, pathsA, codeA);
+                SaveGuestWindow(memoryManager, currentStage, pathsB, codeB);
             }
 
             ShaderProgram program = currentStage.Translate(vertexA, asCompute);
+            ShaderDumper.SaveTranslation(pathsB, program, cb1DataB, pathsA.FullPath);
 
             pathsB.Prepend(program);
             pathsA.Prepend(program);
@@ -793,7 +796,8 @@ namespace Ryujinx.Graphics.Gpu.Shader
         /// <param name="code">Optional Maxwell binary code of the current stage shader, if present on cache</param>
         /// <param name="asCompute">Indicates that the vertex shader should be converted to a compute shader</param>
         /// <returns>Compiled graphics shader code</returns>
-        private static TranslatedShader TranslateShader(ShaderDumper dumper, GpuChannel channel, TranslatorContext context, byte[] code, bool asCompute)
+        private static TranslatedShader TranslateShader(ShaderDumper dumper, GpuChannel channel, TranslatorContext context, byte[] code, bool asCompute,
+            GpuChannelComputeState? computeState = null)
         {
             MemoryManager memoryManager = channel.MemoryManager;
 
@@ -805,11 +809,23 @@ namespace Ryujinx.Graphics.Gpu.Shader
             code ??= memoryManager.GetSpan(context.Address, context.Size).ToArray();
 
             ShaderDumpPaths paths = dumper?.Dump(code, context.Stage == ShaderStage.Compute) ?? default;
+            SaveGuestWindow(memoryManager, context, paths, code);
             ShaderProgram program = context.Translate(asCompute);
+            ShaderDumper.SaveTranslation(paths, program, cb1Data, computeState: computeState);
 
             paths.Prepend(program);
 
             return new TranslatedShader(new CachedShaderStage(program.Info, code, cb1Data), program);
+        }
+
+        // Debug-only bounded memory snapshot. The extent is mapped memory, not
+        // a claim that trailing bytes belong to the decoded shader program.
+        private static void SaveGuestWindow(MemoryManager memory, TranslatorContext context, ShaderDumpPaths paths, byte[] code)
+        {
+            if (!paths.HasPath || Environment.GetEnvironmentVariable("ARCTRL_SHADER_MEMORY_WINDOW") != "1") return;
+            byte[] window = memory.GetSpanMapped(context.Address, 65536).ToArray();
+            if (window.Length < code.Length || !window.AsSpan(0, code.Length).SequenceEqual(code)) return;
+            File.WriteAllBytes(paths.FullPath + ".memory.bin", window);
         }
 
         /// <summary>

@@ -7,6 +7,8 @@ using Ryujinx.Graphics.Gpu.Shader;
 using Ryujinx.Graphics.Shader;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using System.Runtime.CompilerServices;
 
 namespace Ryujinx.Graphics.Gpu.Engine.Compute
@@ -22,6 +24,33 @@ namespace Ryujinx.Graphics.Gpu.Engine.Compute
         private readonly DeviceState<ComputeClassState> _state;
 
         private readonly InlineToMemoryClass _i2mClass;
+        private readonly string _referenceComputeDirectory = Environment.GetEnvironmentVariable("ARCTRL_REFERENCE_COMPUTE_DIR");
+        private byte[] _referenceComputeCode;
+        private bool _referenceComputeCaptured;
+
+        private void CaptureReferenceComputeInputs(ulong shaderAddress, int groupsX, int groupsY, int groupsZ, int localX, int localY, int localZ, int localMemory, int sharedMemory)
+        {
+            if (_referenceComputeCaptured || string.IsNullOrEmpty(_referenceComputeDirectory)) return;
+            _referenceComputeCode ??= File.ReadAllBytes(Path.Combine(_referenceComputeDirectory, "target-compute.bin"));
+            if (!_channel.MemoryManager.GetSpan(shaderAddress, _referenceComputeCode.Length).SequenceEqual(_referenceComputeCode)) return;
+            ulong address = _channel.BufferManager.GetComputeUniformBufferAddress(0);
+            int size = _channel.BufferManager.GetComputeUniformBufferSize(0);
+            if (size < 0x31c || size > 65536) throw new InvalidDataException("Invalid reference compute driver buffer size.");
+            File.WriteAllBytes(Path.Combine(_referenceComputeDirectory, "driver0.bin"),
+                _channel.MemoryManager.Physical.GetSpan(address, size, tracked: true).ToArray());
+            ulong c1Address = _channel.BufferManager.GetComputeUniformBufferAddress(1);
+            int c1Size = _channel.BufferManager.GetComputeUniformBufferSize(1);
+            if (c1Size < 0 || c1Size > 65536) throw new InvalidDataException("Invalid reference compute c1 buffer size.");
+            if (c1Size != 0)
+                File.WriteAllBytes(Path.Combine(_referenceComputeDirectory, "c1.bin"),
+                    _channel.MemoryManager.Physical.GetSpan(c1Address, c1Size, tracked: true).ToArray());
+            File.WriteAllText(Path.Combine(_referenceComputeDirectory, "compute.json"), JsonSerializer.Serialize(new {
+                shaderAddress, groupsX, groupsY, groupsZ, localX, localY, localZ, localMemory, sharedMemory, address, size,
+                c1Address, c1Size,
+                scope = "exact guest code match; tracked driver uniform before dispatch; not GPU output readback"
+            }, new JsonSerializerOptions {WriteIndented = true}));
+            _referenceComputeCaptured = true;
+        }
 
         /// <summary>
         /// Creates a new instance of the compute engine class.
@@ -123,6 +152,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.Compute
 
                 _channel.BufferManager.SetComputeUniformBuffer(index, gpuVa, size);
             }
+
+            CaptureReferenceComputeInputs(shaderGpuVa, qmd.CtaRasterWidth, qmd.CtaRasterHeight, qmd.CtaRasterDepth, qmd.CtaThreadDimension0, qmd.CtaThreadDimension1, qmd.CtaThreadDimension2, localMemorySize, sharedMemorySize);
 
             ulong samplerPoolGpuVa = ((ulong)_state.State.SetTexSamplerPoolAOffsetUpper << 32) | _state.State.SetTexSamplerPoolB;
             ulong texturePoolGpuVa = ((ulong)_state.State.SetTexHeaderPoolAOffsetUpper << 32) | _state.State.SetTexHeaderPoolB;

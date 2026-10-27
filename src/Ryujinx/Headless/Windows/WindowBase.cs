@@ -128,6 +128,7 @@ namespace Ryujinx.Headless
             }
 
             Renderer = renderer;
+            InitializeReferenceAutomation();
 
             NpadManager.Initialize(device, inputConfigs, enableKeyboard, enableMouse);
             TouchScreenManager.Initialize(device);
@@ -311,6 +312,7 @@ namespace Ryujinx.Headless
 
                     while (Device.ConsumeFrameAvailable())
                     {
+                        CaptureReferenceFrame();
                         Device.PresentFrame(SwapBuffers);
                     }
 
@@ -363,6 +365,7 @@ namespace Ryujinx.Headless
         {
             while (_isActive)
             {
+                PollReferenceAutomation();
                 UpdateFrame();
 
                 SDL_PumpEvents();
@@ -407,7 +410,7 @@ namespace Ryujinx.Headless
                 return false;
             }
 
-            NpadManager.Update();
+            if (!UpdateReferenceInput()) NpadManager.Update();
 
             // Touchscreen
             bool hasTouch = false;

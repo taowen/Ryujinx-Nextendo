@@ -13,7 +13,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
     /// <summary>
     /// Draw manager.
     /// </summary>
-    class DrawManager : IDisposable
+    partial class DrawManager : IDisposable
     {
         // Since we don't know the index buffer size for indirect draws,
         // we must assume a minimum and maximum size and use that for buffer data update purposes.
@@ -587,6 +587,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             int firstInstance,
             bool indexed)
         {
+            CaptureReferenceDrawInputs(count, instanceCount);
             if (instanceCount > 1)
             {
                 _channel.BufferManager.SetInstancedDrawVertexCount(count);

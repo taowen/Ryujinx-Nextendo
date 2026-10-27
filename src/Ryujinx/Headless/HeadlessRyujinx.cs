@@ -178,6 +178,16 @@ namespace Ryujinx.Headless
             _libHacHorizonManager.InitializeSystemClients();
 
             _contentManager = new ContentManager(_virtualFileSystem);
+            // Local reference runs may install the update partition from the user's cart.
+            string referenceFirmware = Environment.GetEnvironmentVariable("ARCTRL_REFERENCE_FIRMWARE");
+            if (!string.IsNullOrEmpty(referenceFirmware))
+            {
+                var version = _contentManager.VerifyFirmwarePackage(referenceFirmware);
+                if (version == null)
+                    throw new InvalidOperationException("Reference firmware verification returned no version.");
+                _contentManager.InstallFirmware(referenceFirmware);
+                Logger.Notice.Print(LogClass.Application, $"Reference firmware installed: {version.VersionString}");
+            }
             _accountManager = new AccountManager(_libHacHorizonManager.RyujinxClient, option.UserProfile);
             _userChannelPersistence = new UserChannelPersistence();
 

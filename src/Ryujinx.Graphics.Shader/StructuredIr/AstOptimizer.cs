@@ -22,6 +22,12 @@ namespace Ryujinx.Graphics.Shader.StructuredIr
                 {
                     if (node is AstAssignment assignment && assignment.Destination is AstOperand propVar)
                     {
+                        // Propagating or dropping an unused result must not
+                        // duplicate or remove an atomic operation or call.
+                        if (HasSideEffects(assignment.Source))
+                        {
+                            continue;
+                        }
                         bool isWorthPropagating = propVar.Uses.Count == 1 || IsWorthPropagating(assignment.Source);
 
                         if (propVar.Defs.Count == 1 && isWorthPropagating)
@@ -40,6 +46,30 @@ namespace Ryujinx.Graphics.Shader.StructuredIr
             }
 
             RemoveEmptyBlocks(mainBlock);
+        }
+
+        private static bool HasSideEffects(IAstNode node)
+        {
+            if (node is not AstOperation operation)
+            {
+                return false;
+            }
+
+            Instruction inst = operation.Inst & Instruction.Mask;
+            if (inst.IsAtomic() || inst is Instruction.ImageAtomic or Instruction.ImageStore or Instruction.Store or Instruction.Call)
+            {
+                return true;
+            }
+
+            for (int index = 0; index < operation.SourcesCount; index++)
+            {
+                if (HasSideEffects(operation.GetSource(index)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsWorthPropagating(IAstNode source)

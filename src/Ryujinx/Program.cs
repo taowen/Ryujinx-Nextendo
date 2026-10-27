@@ -123,13 +123,17 @@ namespace Ryujinx.Ava
                 // If you can't tell by the error string,
                 // this actually checks if the current process was run with "Run as Administrator"
                 // ...but this reads like it checks if the current is in/has the Windows admin role? lol
-                if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
+                bool referenceAdmin = args.Contains("--no-gui", StringComparer.Ordinal) &&
+                    Environment.GetEnvironmentVariable("ARCTRL_REFERENCE_ALLOW_ADMIN") == "1";
+                if (!referenceAdmin && new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
                 {
                     Logger.Error?.PrintMsg(LogClass.Application, "Ryujinx is not intended to be run as administrator. Exiting...");
                     _ = Win32NativeInterop.MessageBoxA(nint.Zero, "Ryujinx is not intended to be run as administrator.",
                         $"Ryujinx {Version}", MbIconwarning);
                     return 0;
                 }
+                if (referenceAdmin)
+                    Logger.Warning?.PrintMsg(LogClass.Application, "Arctrl reference automation explicitly allows an elevated headless process.");
             }
             else // Unix
             {
