@@ -587,7 +587,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
             int firstInstance,
             bool indexed)
         {
-            CaptureReferenceDrawInputs(count, instanceCount);
+            CaptureReferenceDrawInputs(count, instanceCount, firstIndex, firstVertex, firstInstance, indexed);
             if (instanceCount > 1)
             {
                 _channel.BufferManager.SetInstancedDrawVertexCount(count);

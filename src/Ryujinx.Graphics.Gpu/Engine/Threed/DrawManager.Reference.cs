@@ -17,7 +17,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         private byte[] _referenceVs;
         private byte[] _referenceFs;
 
-        private void CaptureReferenceDrawInputs(int count, int instanceCount)
+        private void CaptureReferenceDrawInputs(int count, int instanceCount, int firstIndex, int firstVertex, int firstInstance, bool indexed)
         {
             if (string.IsNullOrEmpty(_referenceDrawDirectory)) return;
             string request = Path.Combine(_referenceDrawDirectory, "draw-capture.request");
@@ -83,7 +83,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                     _channel.MemoryManager.GetSpan(globalAddress, (int)globalSize, tracked: true).ToArray());
             }
             File.WriteAllText(Path.Combine(output, "draw.json"), JsonSerializer.Serialize(new {
-                count, instanceCount, vsAddress, fsAddress, globalAddress, globalSize, buffers,
+                count, instanceCount, firstIndex, firstVertex, firstInstance, indexed,
+                depthMinusOneToOne = _currentSpecState.GetGraphicsState().DepthMode,
+                hostSupportsDepthClipControl = _context.Capabilities.SupportsDepthClipControl,
+                depthModeRegister = _state.State.DepthMode,
+                vsAddress, fsAddress, globalAddress, globalSize, buffers,
                 allBoundCbufs = _referenceAllCbufs, vertexOnly = _referenceVertexOnly,
                 scope = "tracked guest memory read before selected draw; not a Vulkan GPU resource readback or power measurement"
             }, new JsonSerializerOptions {WriteIndented = true}));
