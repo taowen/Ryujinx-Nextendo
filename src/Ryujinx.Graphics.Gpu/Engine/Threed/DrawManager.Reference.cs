@@ -12,6 +12,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
         // Shader identities are complete guest byte sequences supplied privately.
         private readonly string _referenceDrawDirectory = Environment.GetEnvironmentVariable("ARCTRL_REFERENCE_DRAW_DIR");
         private readonly bool _referenceAllCbufs = Environment.GetEnvironmentVariable("ARCTRL_REFERENCE_CAPTURE_ALL_CBUFS") == "1";
+        private readonly bool _referenceFullCbufs = Environment.GetEnvironmentVariable("ARCTRL_REFERENCE_CAPTURE_FULL_CBUFS") == "1";
         private readonly bool _referenceVertexOnly = Environment.GetEnvironmentVariable("ARCTRL_REFERENCE_MATCH_VERTEX_ONLY") == "1";
         private byte[] _referenceVs;
         private byte[] _referenceFs;
@@ -42,7 +43,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.Threed
                 int size = _channel.BufferManager.GetGraphicsUniformBufferSize(stage, slot);
                 if (size <= 0 || size > 65536) throw new InvalidDataException("Invalid reference cbuf size.");
                 string file = $"stage{stage}-cbuf{slot}.bin";
-                int snapshotBytes = _referenceAllCbufs ? Math.Min(size, 16) : size;
+                int snapshotBytes = _referenceAllCbufs && !_referenceFullCbufs ? Math.Min(size, 16) : size;
                 try
                 {
                     byte[] bytes = _channel.MemoryManager.Physical.GetSpan(address, snapshotBytes, tracked: true).ToArray();
